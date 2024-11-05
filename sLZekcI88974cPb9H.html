@@ -1,0 +1,392 @@
+<html><head><base href="." />
+<meta charset="UTF-8">
+<title>Candy Tetris in Snow</title>
+<style>
+body {
+    margin: 0;
+    background: linear-gradient(135deg, #0a0a2a, #4b0082, #800080);
+    color: white;
+    font-family: Arial, sans-serif;
+    display: flex;
+    overflow: hidden;
+    animation: bgShift 10s infinite alternate;
+}
+
+@keyframes bgShift {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 100% 50%; }
+}
+
+.container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: relative;
+}
+
+.instructions {
+    width: 200px;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 20px;
+    border-radius: 10px;
+    margin-right: 20px;
+    box-shadow: 0 0 15px rgba(255, 192, 203, 0.3);
+    backdrop-filter: blur(5px);
+    border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.instructions h2 {
+    color: #ff69b4;
+    text-shadow: 0 0 10px #ff69b4;
+    animation: glow 2s infinite alternate;
+}
+
+@keyframes glow {
+    from { text-shadow: 0 0 10px #ff69b4; }
+    to { text-shadow: 0 0 20px #ff69b4, 0 0 30px #ff1493; }
+}
+
+#game-board {
+    border: 2px solid #ff69b4;
+    background: rgba(0, 0, 0, 0.5);
+    box-shadow: 0 0 20px rgba(255, 105, 180, 0.5);
+    border-radius: 10px;
+}
+
+button {
+    background: linear-gradient(45deg, #ff69b4, #ff1493);
+    border: none;
+    padding: 10px 20px;
+    color: white;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+button:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 15px rgba(255, 105, 180, 0.7);
+}
+
+.snowflakes {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: -1;
+}
+
+@keyframes snowfall {
+    0% {
+        transform: translateY(-10vh) translateX(0) rotate(0deg);
+    }
+    100% {
+        transform: translateY(100vh) translateX(20px) rotate(360deg);
+    }
+}
+
+.candy-piece {
+    background: radial-gradient(circle at 30% 30%, #ffffff 0%, var(--color) 60%);
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="instructions">
+        <h2>Candy Tetris</h2>
+        <p>Controls:</p>
+        <ul>
+            <li>← → : Move left/right</li>
+            <li>↓ : Move down faster</li>
+            <li>↑ : Rotate piece</li>
+            <li>Space : Drop instantly</li>
+        </ul>
+        <p>Score: <span id="score">0</span></p>
+        <button onclick="startGame()">Start Game</button>
+    </div>
+    <canvas id="game-board" width="600" height="600"></canvas>
+</div>
+
+<div class="snowflakes" id="snowflakes"></div>
+
+<script>
+const canvas = document.getElementById('game-board');
+const ctx = canvas.getContext('2d');
+const BLOCK_SIZE = 30;
+const BOARD_WIDTH = 20;
+const BOARD_HEIGHT = 20;
+let board = Array(BOARD_HEIGHT).fill().map(() => Array(BOARD_WIDTH).fill(0));
+let currentPiece;
+let score = 0;
+
+const PIECES = [
+    {
+        shape: [[1, 1, 1, 1]],
+        color: '#FF69B4'
+    },
+    {
+        shape: [[1, 1], [1, 1]],
+        color: '#FFD700'
+    },
+    {
+        shape: [[0, 1, 0], [1, 1, 1]],
+        color: '#FF1493'
+    },
+    {
+        shape: [[1, 0], [1, 0], [1, 1]],
+        color: '#FFA500'
+    },
+    {
+        shape: [[0, 1], [0, 1], [1, 1]],
+        color: '#FF6347'
+    },
+    {
+        shape: [[0, 1, 1], [1, 1, 0]],
+        color: '#98FB98'
+    },
+    {
+        shape: [[1, 1, 0], [0, 1, 1]],
+        color: '#DDA0DD'
+    }
+];
+
+function createSnowflakes() {
+    const snowflakesContainer = document.getElementById('snowflakes');
+    const colors = ['#ff69b4', '#98fb98', '#dda0dd', '#ffd700', '#ff6347'];
+    for (let i = 0; i < 50; i++) {
+        const snowflake = document.createElement('div');
+        snowflake.style.position = 'absolute';
+        snowflake.style.left = `${Math.random() * 100}%`;
+        snowflake.style.animation = `snowfall ${Math.random() * 3 + 2}s linear infinite`;
+        snowflake.style.opacity = Math.random() * 0.7 + 0.3;
+        snowflake.innerHTML = '❄';
+        snowflake.style.color = colors[Math.floor(Math.random() * colors.length)];
+        snowflake.style.fontSize = `${Math.random() * 10 + 10}px`;
+        snowflake.style.filter = 'drop-shadow(0 0 5px currentColor)';
+        snowflakesContainer.appendChild(snowflake);
+    }
+}
+
+function createNewPiece() {
+    const pieceIndex = Math.floor(Math.random() * PIECES.length);
+    const piece = PIECES[pieceIndex];
+    return {
+        shape: piece.shape,
+        color: piece.color,
+        x: Math.floor(BOARD_WIDTH / 2) - Math.floor(piece.shape[0].length / 2),
+        y: 0
+    };
+}
+
+function drawBoard() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    for (let y = 0; y < BOARD_HEIGHT; y++) {
+        for (let x = 0; x < BOARD_WIDTH; x++) {
+            if (board[y][x]) {
+                drawBlock(x, y, board[y][x]);
+            }
+        }
+    }
+    
+    if (currentPiece) {
+        currentPiece.shape.forEach((row, y) => {
+            row.forEach((value, x) => {
+                if (value) {
+                    drawBlock(currentPiece.x + x, currentPiece.y + y, currentPiece.color);
+                }
+            });
+        });
+    }
+}
+
+function drawBlock(x, y, color) {
+    ctx.fillStyle = color;
+    const xPos = x * BLOCK_SIZE;
+    const yPos = y * BLOCK_SIZE;
+    
+    ctx.beginPath();
+    ctx.roundRect(xPos, yPos, BLOCK_SIZE, BLOCK_SIZE, 8);
+    ctx.fill();
+    
+    const gradient = ctx.createRadialGradient(
+        xPos + BLOCK_SIZE * 0.3,
+        yPos + BLOCK_SIZE * 0.3,
+        0,
+        xPos + BLOCK_SIZE * 0.5,
+        yPos + BLOCK_SIZE * 0.5,
+        BLOCK_SIZE
+    );
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    
+    ctx.fillStyle = 'white';
+    ctx.beginPath();
+    ctx.arc(xPos + BLOCK_SIZE * 0.3, yPos + BLOCK_SIZE * 0.3, 2, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function moveDown() {
+    currentPiece.y++;
+    if (isCollision()) {
+        currentPiece.y--;
+        mergePiece();
+        clearLines();
+        currentPiece = createNewPiece();
+        if (isCollision()) {
+            alert('Game Over! Score: ' + score);
+            board = Array(BOARD_HEIGHT).fill().map(() => Array(BOARD_WIDTH).fill(0));
+            score = 0;
+            document.getElementById('score').textContent = score;
+        }
+    }
+    drawBoard();
+}
+
+function moveLeft() {
+    currentPiece.x--;
+    if (isCollision()) {
+        currentPiece.x++;
+    }
+    drawBoard();
+}
+
+function moveRight() {
+    currentPiece.x++;
+    if (isCollision()) {
+        currentPiece.x--;
+    }
+    drawBoard();
+}
+
+function rotate() {
+    const originalShape = currentPiece.shape;
+    currentPiece.shape = currentPiece.shape[0].map((_, i) =>
+        currentPiece.shape.map(row => row[i]).reverse()
+    );
+    if (isCollision()) {
+        currentPiece.shape = originalShape;
+    }
+    drawBoard();
+}
+
+function isCollision() {
+    return currentPiece.shape.some((row, y) =>
+        row.some((value, x) => {
+            const newX = currentPiece.x + x;
+            const newY = currentPiece.y + y;
+            return (
+                value &&
+                (newX < 0 ||
+                    newX >= BOARD_WIDTH ||
+                    newY >= BOARD_HEIGHT ||
+                    (newY >= 0 && board[newY][newX]))
+            );
+        })
+    );
+}
+
+function mergePiece() {
+    if (!currentPiece) return;
+    currentPiece.shape.forEach((row, y) => {
+        row.forEach((value, x) => {
+            if (value && currentPiece.y + y >= 0) {  
+                const boardY = currentPiece.y + y;
+                const boardX = currentPiece.x + x;
+                if (boardY < BOARD_HEIGHT && boardX < BOARD_WIDTH) {  
+                    board[boardY][boardX] = currentPiece.color;
+                }
+            }
+        });
+    });
+}
+
+function clearLines() {
+    let linesCleared = 0;
+    for (let y = BOARD_HEIGHT - 1; y >= 0; y--) {
+        if (board[y].every(cell => cell)) {
+            board.splice(y, 1);
+            board.unshift(Array(BOARD_WIDTH).fill(0));
+            linesCleared++;
+            y++;
+        }
+    }
+    if (linesCleared > 0) {
+        score += linesCleared * 100;
+        document.getElementById('score').textContent = score;
+    }
+}
+
+function dropPiece() {
+    if (!currentPiece) return;
+    
+    let dropDistance = 0;
+    while (!isCollision()) {
+        currentPiece.y++;
+        dropDistance++;
+    }
+    
+    if (dropDistance > 0) {
+        currentPiece.y--;
+        mergePiece();
+        clearLines();
+        currentPiece = createNewPiece();
+        if (isCollision()) {
+            alert('Game Over! Score: ' + score);
+            board = Array(BOARD_HEIGHT).fill().map(() => Array(BOARD_WIDTH).fill(0));
+            score = 0;
+            document.getElementById('score').textContent = score;
+            clearInterval(gameInterval);
+            currentPiece = null;
+        }
+        drawBoard();
+    }
+}
+
+let gameInterval;
+
+function startGame() {
+    if (gameInterval) {
+        clearInterval(gameInterval);
+    }
+    board = Array(BOARD_HEIGHT).fill().map(() => Array(BOARD_WIDTH).fill(0));
+    score = 0;
+    document.getElementById('score').textContent = score;
+    currentPiece = createNewPiece();
+    gameInterval = setInterval(() => moveDown(), 1000);
+    drawBoard();
+}
+
+document.addEventListener('keydown', event => {
+    if (!currentPiece || !gameInterval) return;  
+    
+    switch (event.keyCode) {
+        case 37: // Left arrow
+            moveLeft();
+            break;
+        case 39: // Right arrow
+            moveRight();
+            break;
+        case 40: // Down arrow
+            moveDown();
+            break;
+        case 38: // Up arrow
+            rotate();
+            break;
+        case 32: // Space
+            dropPiece();
+            break;
+    }
+});
+
+createSnowflakes();
+</script>
+</body>
+</html>
